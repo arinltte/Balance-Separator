@@ -1,16 +1,15 @@
-"""
-balance_logic.py
-Data models, balance calculations, and file persistence for the Balance Separator app.
-"""
-
 import json
 import os
+from pathlib import Path
 from dataclasses import dataclass, field
 from copy import deepcopy
 from typing import Optional
 
-CONFIG_FILE = "config.json"
-PROJECTS_FILE = "projects.json"
+APP_DIR = Path.home() / ".balance_separator"
+APP_DIR.mkdir(parents=True, exist_ok=True)
+
+CONFIG_FILE = APP_DIR / "config.json"
+PROJECTS_FILE = APP_DIR / "projects.json"
 
 
 # ─── Data Models ───────────────────────────────────────────────────────────────
@@ -32,6 +31,9 @@ class Teammate:
 @dataclass
 class Project:
     name: str
+    description: str = ""
+    start_date: str = ""
+    end_date: str = ""
     teammates: list = field(default_factory=list)
     settled_debts: list = field(default_factory=list)  # tracks "{from}_{to}_{amount}"
 
@@ -41,6 +43,7 @@ class Project:
 class SettingsManager:
     DEFAULTS = {
         "theme": "light",
+        "currency": "RM",
         "left_panel_sizes": [250, 850],
         "content_splitter_sizes": [400, 400],
         "right_col_sizes": [300, 300],
@@ -85,7 +88,12 @@ class ProjectManager:
     def _from_json(data: list) -> list:
         projects = []
         for p in data:
-            proj = Project(name=p["name"])
+            proj = Project(
+                name=p["name"],
+                description=p.get("description", ""),
+                start_date=p.get("start_date", ""),
+                end_date=p.get("end_date", "")
+            )
             proj.settled_debts = p.get("settled_debts", [])
             for t in p.get("teammates", []):
                 mate = Teammate(
@@ -104,6 +112,9 @@ class ProjectManager:
         return [
             {
                 "name": p.name,
+                "description": p.description,
+                "start_date": p.start_date,
+                "end_date": p.end_date,
                 "settled_debts": p.settled_debts,
                 "teammates": [
                     {
@@ -144,16 +155,19 @@ class ProjectManager:
         self.save()
         return project
 
-    def remove_project(self, idx: int) -> bool:
+    def update_project(self, idx: int, name: str, desc: str, start_date: str, end_date: str) -> bool:
         if 0 <= idx < len(self.projects):
-            del self.projects[idx]
+            self.projects[idx].name = name
+            self.projects[idx].description = desc
+            self.projects[idx].start_date = start_date
+            self.projects[idx].end_date = end_date
             self.save()
             return True
         return False
 
-    def rename_project(self, idx: int, new_name: str) -> bool:
+    def remove_project(self, idx: int) -> bool:
         if 0 <= idx < len(self.projects):
-            self.projects[idx].name = new_name
+            del self.projects[idx]
             self.save()
             return True
         return False
