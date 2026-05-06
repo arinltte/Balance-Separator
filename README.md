@@ -38,7 +38,7 @@ This project does not have strict Python version limits (Tested on Python 3.14) 
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/arinltte/balance-separator.git
+git clone https://github.com/arinltte/Balance-Separator.git
 cd balance-separator
 ```
 
