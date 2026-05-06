@@ -1,21 +1,18 @@
-"""
-balance_gui.py
-PyQt6 GUI for the Balance Separator app.
-Imports all business logic from balance_logic.
-"""
-
 import sys
 import base64
+import urllib.request
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QLineEdit, QListWidget, QListWidgetItem, QSplitter, QTableWidget, QTableWidgetItem,
     QHeaderView, QInputDialog, QMessageBox, QAbstractItemView, QMenu, QScrollArea,
-    QFrame, QStackedWidget, QButtonGroup, QDialog, QComboBox, QFileDialog
+    QFrame, QStackedWidget, QButtonGroup, QDialog, QComboBox, QFileDialog, QDateEdit
 )
-from PyQt6.QtCore import Qt, QSize, QByteArray, QBuffer, QEvent
+from PyQt6.QtCore import Qt, QSize, QByteArray, QBuffer, QEvent, QDate
 from PyQt6.QtGui import QColor, QTextDocument, QPdfWriter, QPixmap, QIcon, QPainter, QPainterPath
 
 from balance_logic import SettingsManager, ProjectManager, BalanceCalculator
+
+APP_VERSION = "0.2.0"
 
 # ─── Stylesheets ───────────────────────────────────────────────────────────────
 
@@ -60,11 +57,12 @@ QPushButton#avatarAddBtn {{
 }}
 QPushButton#avatarAddBtn:hover {{ border-color: #4A90D9; color: #4A90D9; background-color: #F8F9FA; }}
 
-QLineEdit {{
+QLineEdit, QDateEdit {{
     border: 1px solid #DEE2E6; border-radius: 6px; padding: 7px 10px; background-color: #FFFFFF; color: #333333;
 }}
-QLineEdit:focus {{ border-color: #4A90D9; }}
-QLineEdit:disabled {{ background-color: #F8F9FA; color: #ADB5BD; }}
+QLineEdit:focus, QDateEdit:focus {{ border-color: #4A90D9; }}
+QLineEdit:disabled, QDateEdit:disabled {{ background-color: #F8F9FA; color: #ADB5BD; }}
+QDateEdit::drop-down {{ border: none; padding-right: 5px; }}
 
 QComboBox {{
     border: 1px solid #DEE2E6; border-radius: 6px; padding: 6px 10px; background-color: #FFFFFF; color: #333333;
@@ -138,11 +136,12 @@ QPushButton#avatarAddBtn {{
 }}
 QPushButton#avatarAddBtn:hover {{ border-color: #6BB5FF; color: #6BB5FF; background-color: #1E1E1E; }}
 
-QLineEdit {{
+QLineEdit, QDateEdit {{
     border: 1px solid #333333; border-radius: 6px; padding: 7px 10px; background-color: #1E1E1E; color: #E0E0E0;
 }}
-QLineEdit:focus {{ border-color: #4A90D9; }}
-QLineEdit:disabled {{ background-color: #161616; color: #666666; border-color: #2A2A2A; }}
+QLineEdit:focus, QDateEdit:focus {{ border-color: #4A90D9; }}
+QLineEdit:disabled, QDateEdit:disabled {{ background-color: #161616; color: #666666; border-color: #2A2A2A; }}
+QDateEdit::drop-down {{ border: none; padding-right: 5px; }}
 
 QComboBox {{
     border: 1px solid #444444; border-radius: 6px; padding: 6px 10px; background-color: #1E1E1E; color: #E0E0E0;
@@ -194,6 +193,7 @@ def create_circular_pixmap(pixmap, size=48):
     painter.end()
     return target
 
+
 # ─── Dialogs ───────────────────────────────────────────────────────────────────
 
 class SettingsDialog(QDialog):
@@ -201,14 +201,15 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.settings_mgr = settings_mgr
         self.setWindowTitle("Settings")
-        self.setFixedSize(300, 150)
+        self.setFixedSize(350, 320)
         
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
 
+        # Theme Section
         theme_layout = QHBoxLayout()
         theme_label = QLabel("Theme:")
-        theme_label.setFixedWidth(60)
+        theme_label.setFixedWidth(80)
         theme_layout.addWidget(theme_label)
         
         self.theme_combo = QComboBox()
@@ -216,19 +217,147 @@ class SettingsDialog(QDialog):
         current_theme = self.settings_mgr.get("theme", "light").capitalize()
         self.theme_combo.setCurrentText(current_theme)
         theme_layout.addWidget(self.theme_combo)
-        
         layout.addLayout(theme_layout)
+
+        # Currency Section
+        currency_layout = QHBoxLayout()
+        curr_label = QLabel("Currency:")
+        curr_label.setFixedWidth(80)
+        currency_layout.addWidget(curr_label)
+        
+        self.curr_combo = QComboBox()
+        self.curr_combo.addItems(["RM", "$", "€", "£", "¥"])
+        current_currency = self.settings_mgr.get("currency", "RM")
+        self.curr_combo.setCurrentText(current_currency)
+        currency_layout.addWidget(self.curr_combo)
+        layout.addLayout(currency_layout)
+        
+        # Check Updates Button
+        update_layout = QHBoxLayout()
+        self.update_btn = QPushButton("Check for Updates")
+        self.update_btn.setObjectName("secondaryBtn")
+        self.update_btn.clicked.connect(self._check_for_updates)
+        update_layout.addWidget(self.update_btn)
+        layout.addLayout(update_layout)
+
         layout.addStretch()
 
+        # Save Button
         save_btn = QPushButton("Save Settings")
         save_btn.clicked.connect(self._save_and_close)
         layout.addWidget(save_btn)
 
+        # Footer 
+        footer = QLabel(f"2026 Developed by Chen Jin Shen\ncjshen00@gmail.com\n\nVersion {APP_VERSION}")
+        footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        footer.setObjectName("footerLabel")
+        layout.addWidget(footer)
+
+    def _check_for_updates(self):
+        self.update_btn.setText("Checking...")
+        self.update_btn.setEnabled(False)
+        QApplication.processEvents()
+        try:
+            req = urllib.request.Request(
+                "https://github.com/arinltte/Balance-Separator/releases/latest",
+                headers={'User-Agent': 'Mozilla/5.0'}
+            )
+            response = urllib.request.urlopen(req, timeout=5)
+            final_url = response.geturl()
+            # final_url normally looks like https://github.com/.../releases/tag/vX.Y.Z
+            tag = final_url.split('/')[-1]
+            
+            # Simple version comparison
+            current_tag = f"v{APP_VERSION}"
+            if tag > current_tag:
+                QMessageBox.information(self, "Update Available", f"A new version ({tag}) is available!\nPlease check GitHub to download the latest release.")
+            else:
+                QMessageBox.information(self, "Up to Date", f"You are running the latest version ({current_tag}).")
+        except Exception:
+            QMessageBox.warning(self, "Update Check Failed", "Could not connect to GitHub to check for updates.")
+        finally:
+            self.update_btn.setText("Check for Updates")
+            self.update_btn.setEnabled(True)
+
     def _save_and_close(self):
         selected_theme = self.theme_combo.currentText().lower()
+        selected_currency = self.curr_combo.currentText()
         self.settings_mgr.set("theme", selected_theme)
+        self.settings_mgr.set("currency", selected_currency)
         QApplication.instance().setStyleSheet(DARK_STYLE if selected_theme == "dark" else LIGHT_STYLE)
         self.accept()
+
+
+class ProjectEditDialog(QDialog):
+    def __init__(self, parent, project):
+        super().__init__(parent)
+        self.project = project
+        self.setWindowTitle("Edit Project Details")
+        self.setFixedSize(350, 420)
+        
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+
+        # Project Name
+        layout.addWidget(QLabel("Project Name:"))
+        self.name_input = QLineEdit(project.name)
+        layout.addWidget(self.name_input)
+
+        # Start Date
+        layout.addWidget(QLabel("Start Date:"))
+        self.start_input = QDateEdit()
+        self.start_input.setCalendarPopup(True)
+        if project.start_date:
+            self.start_input.setDate(QDate.fromString(project.start_date, Qt.DateFormat.ISODate))
+        else:
+            self.start_input.setDate(QDate.currentDate())
+        layout.addWidget(self.start_input)
+
+        # End Date
+        layout.addWidget(QLabel("End Date:"))
+        self.end_input = QDateEdit()
+        self.end_input.setCalendarPopup(True)
+        if project.end_date:
+            self.end_input.setDate(QDate.fromString(project.end_date, Qt.DateFormat.ISODate))
+        else:
+            self.end_input.setDate(QDate.currentDate())
+        layout.addWidget(self.end_input)
+
+        # Description
+        layout.addWidget(QLabel("Description (Optional):"))
+        self.desc_input = QLineEdit(project.description)
+        layout.addWidget(self.desc_input)
+
+        layout.addStretch()
+
+        # Delete Button
+        del_btn = QPushButton("Delete Project")
+        del_btn.setObjectName("dangerBtn")
+        del_btn.clicked.connect(self._delete_project)
+        layout.addWidget(del_btn)
+
+        layout.addWidget(QFrame(frameShape=QFrame.Shape.HLine))
+
+        # Action Buttons
+        btn_layout = QHBoxLayout()
+        save_btn = QPushButton("Save Changes")
+        save_btn.clicked.connect(self.accept)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("secondaryBtn")
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(cancel_btn)
+        btn_layout.addWidget(save_btn)
+        
+        layout.addLayout(btn_layout)
+
+    def _delete_project(self):
+        reply = QMessageBox.question(
+            self, "Delete Project", 
+            f"Are you sure you want to permanently delete '{self.project.name}'?\nThis action cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.done(2)
 
 
 class TeammateEditDialog(QDialog):
@@ -242,7 +371,6 @@ class TeammateEditDialog(QDialog):
         
         layout = QVBoxLayout(self)
         
-        # Avatar Section
         av_layout = QHBoxLayout()
         self.pic_label = QLabel()
         self.pic_label.setFixedSize(80, 80)
@@ -266,7 +394,6 @@ class TeammateEditDialog(QDialog):
         av_layout.addStretch()
         layout.addLayout(av_layout)
 
-        # Fields
         layout.addWidget(QLabel("Name:"))
         self.name_input = QLineEdit(self.teammate.name)
         layout.addWidget(self.name_input)
@@ -277,7 +404,6 @@ class TeammateEditDialog(QDialog):
 
         layout.addStretch()
 
-        # Delete Section
         del_btn = QPushButton("Delete Teammate")
         del_btn.setObjectName("dangerBtn")
         del_btn.clicked.connect(self._delete_teammate)
@@ -285,7 +411,6 @@ class TeammateEditDialog(QDialog):
 
         layout.addWidget(QFrame(frameShape=QFrame.Shape.HLine))
 
-        # Save/Cancel
         btn_layout = QHBoxLayout()
         save_btn = QPushButton("Save Changes")
         save_btn.clicked.connect(self.accept)
@@ -329,7 +454,7 @@ class TeammateEditDialog(QDialog):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
-            self.done(2)  # Custom return code 2 indicates deletion
+            self.done(2)
 
 
 # ─── Main Window ───────────────────────────────────────────────────────────────
@@ -352,6 +477,13 @@ class MainWindow(QMainWindow):
         
         self.showMaximized()
         self._refresh_projects()
+
+    def _format_money(self, amount: float) -> str:
+        curr = self.settings_mgr.get("currency", "RM")
+        if curr == "RM":
+            return f"RM{amount:,.2f}"
+        else:
+            return f"{amount:,.2f}{curr}"
 
     def _build_ui(self):
         self.setWindowTitle("Balance Separator")
@@ -417,6 +549,11 @@ class MainWindow(QMainWindow):
         self.project_title = QLabel("Project Title")
         self.project_title.setObjectName("headerLabel")
         top_bar.addWidget(self.project_title)
+        
+        self.project_dates_label = QLabel("")
+        self.project_dates_label.setObjectName("footerLabel")
+        top_bar.addWidget(self.project_dates_label)
+        
         top_bar.addStretch()
 
         self.settings_btn = QPushButton("⚙ Settings")
@@ -453,7 +590,7 @@ class MainWindow(QMainWindow):
         self._build_settlement_section(bottom_right_layout)
 
         bottom_bar = QHBoxLayout()
-        self.total_label = QLabel("Total Expenses:  RM0.00")
+        self.total_label = QLabel("Total Expenses:")
         self.total_label.setObjectName("totalLabel")
         bottom_bar.addWidget(self.total_label)
         bottom_bar.addStretch()
@@ -474,18 +611,10 @@ class MainWindow(QMainWindow):
         right_lay.addWidget(self.content_splitter)
         self.right_stack.addWidget(self.project_view)
         
-        # Append stack to the right outer panel
         right_outer.addWidget(self.right_stack, 1)
-
-        # App Footer (Strictly at the bottom of Right Panel)
-        footer = QLabel("2026 Developed by Chen Jin Shen, cjshen00@gmail.com")
-        footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        footer.setObjectName("footerLabel")
-        right_outer.addWidget(footer)
 
         self.main_splitter.addWidget(left)
         self.main_splitter.addWidget(right)
-
         outer_layout.addWidget(self.main_splitter)
 
     # ── Section builders ──
@@ -522,7 +651,6 @@ class MainWindow(QMainWindow):
         row.addWidget(self.desc_input, 3)
 
         self.amt_input = QLineEdit()
-        self.amt_input.setPlaceholderText("Amount (RM)")
         self.amt_input.setMaximumWidth(130)
         self.amt_input.installEventFilter(self)
         row.addWidget(self.amt_input, 1)
@@ -543,7 +671,7 @@ class MainWindow(QMainWindow):
         self.exp_table.setColumnWidth(2, 44)
         
         self.exp_table.verticalHeader().setVisible(False)
-        self.exp_table.verticalHeader().setDefaultSectionSize(34)  # <-- Fixes text cutoff when editing
+        self.exp_table.verticalHeader().setDefaultSectionSize(34) 
         
         self.exp_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.exp_table.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)
@@ -638,21 +766,30 @@ class MainWindow(QMainWindow):
         if not item: return
         row = self.project_list.row(item)
         menu = QMenu(self)
-        act_rename = menu.addAction("✏️  Rename")
-        act_delete = menu.addAction("🗑️  Delete")
+        act_edit = menu.addAction("✏️  Edit Project")
         chosen = menu.exec(self.project_list.mapToGlobal(pos))
 
-        if chosen == act_rename:
-            new_name, ok = QInputDialog.getText(self, "Rename Project", "New name:", text=item.text())
-            if ok and new_name.strip():
-                self.project_mgr.rename_project(row, new_name.strip())
+        if chosen == act_edit:
+            project = self.project_mgr.get_project(row)
+            if not project: return
+            
+            dlg = ProjectEditDialog(self, project)
+            res = dlg.exec()
+            
+            if res == QDialog.DialogCode.Accepted:
+                self.project_mgr.update_project(
+                    row, 
+                    dlg.name_input.text().strip(), 
+                    dlg.desc_input.text().strip(),
+                    dlg.start_input.date().toString(Qt.DateFormat.ISODate),
+                    dlg.end_input.date().toString(Qt.DateFormat.ISODate)
+                )
                 self._refresh_projects()
-        elif chosen == act_delete:
-            reply = QMessageBox.question(self, "Delete Project", f"Delete project '{item.text()}'?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if reply == QMessageBox.StandardButton.Yes:
+            elif res == 2:  # Custom Delete code
                 self.project_mgr.remove_project(row)
                 self.current_project_idx = min(self.current_project_idx, len(self.project_mgr.projects) - 1)
                 self._refresh_projects()
+
 
     def _get_initials(self, name: str) -> str:
         parts = name.strip().split()
@@ -749,7 +886,7 @@ class MainWindow(QMainWindow):
                     dlg.avatar_b64
                 )
                 self._refresh_right()
-            elif res == 2:  # Custom Delete code
+            elif res == 2:
                 self.project_mgr.remove_teammate(self.current_project_idx, tidx)
                 if self.current_teammate_idx == tidx:
                     self.current_teammate_idx = -1
@@ -763,6 +900,9 @@ class MainWindow(QMainWindow):
         self.amt_input.setEnabled(has_teammate)
         self.add_exp_btn.setEnabled(has_teammate)
         
+        curr = self.settings_mgr.get("currency", "RM")
+        self.amt_input.setPlaceholderText(f"Amount ({curr})")
+
         if has_teammate:
             project = self.project_mgr.get_project(self.current_project_idx)
             if project and 0 <= self.current_teammate_idx < len(project.teammates):
@@ -792,7 +932,7 @@ class MainWindow(QMainWindow):
         item_desc.setFlags(item_desc.flags() | Qt.ItemFlag.ItemIsEditable)
         self.exp_table.setItem(row, 0, item_desc)
 
-        item_amt = QTableWidgetItem(f"RM{amount:,.2f}")
+        item_amt = QTableWidgetItem(self._format_money(amount))
         item_amt.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         item_amt.setFlags(item_amt.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self.exp_table.setItem(row, 1, item_amt)
@@ -810,7 +950,8 @@ class MainWindow(QMainWindow):
 
     def _add_expense(self):
         desc = self.desc_input.text().strip() or "Undefined"
-        amt_text = self.amt_input.text().strip().replace("RM", "").replace(",", "")
+        # Sanitize input depending on whatever string symbols they might have pasted
+        amt_text = self.amt_input.text().strip().replace("RM", "").replace(",", "").replace("$", "").replace("€", "").replace("£", "").replace("¥", "")
 
         try:
             amt = float(amt_text)
@@ -840,7 +981,7 @@ class MainWindow(QMainWindow):
         self.settle_list.clear()
 
         if not project or not project.teammates:
-            self.total_label.setText("Total Expenses:  RM0.00")
+            self.total_label.setText(f"Total Expenses:  {self._format_money(0.0)}")
             self.settle_list.blockSignals(False)
             return
 
@@ -854,22 +995,22 @@ class MainWindow(QMainWindow):
             c0 = QTableWidgetItem(name)
             self.bal_table.setItem(row, 0, c0)
 
-            c1 = QTableWidgetItem(f"RM{data['paid']:,.2f}")
+            c1 = QTableWidgetItem(self._format_money(data['paid']))
             c1.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.bal_table.setItem(row, 1, c1)
 
-            c2 = QTableWidgetItem(f"RM{data['share']:,.2f}")
+            c2 = QTableWidgetItem(self._format_money(data['share']))
             c2.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.bal_table.setItem(row, 2, c2)
 
             net = data["net"]
             sign = "+" if net > 0 else ""
-            c3 = QTableWidgetItem(f"{sign}RM{abs(net):,.2f}")
+            c3 = QTableWidgetItem(f"{sign}{self._format_money(abs(net))}")
             c3.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             if net > 0: c3.setForeground(QColor("#27AE60"))
             elif net < 0:
                 c3.setForeground(QColor("#E74C3C"))
-                c3.setText(f"-RM{abs(net):,.2f}")
+                c3.setText(f"-{self._format_money(abs(net))}")
             self.bal_table.setItem(row, 3, c3)
 
         # ── Update Settlements ──
@@ -882,7 +1023,7 @@ class MainWindow(QMainWindow):
                 key = f"{s['from']}_{s['to']}_{s['amount']}"
                 is_settled = key in project.settled_debts
                 
-                text = f"{s['from']}  ➜  {s['to']}:  RM{s['amount']:,.2f}"
+                text = f"{s['from']}  ➜  {s['to']}:  {self._format_money(s['amount'])}"
                 item = QListWidgetItem(text)
                 
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
@@ -898,7 +1039,7 @@ class MainWindow(QMainWindow):
                 self.settle_list.addItem(item)
 
         self.settle_list.blockSignals(False)
-        self.total_label.setText(f"Total Expenses:  RM{total:,.2f}")
+        self.total_label.setText(f"Total Expenses:  {self._format_money(total)}")
 
     def _on_settlement_checked(self, item):
         key = item.data(Qt.ItemDataRole.UserRole)
@@ -924,6 +1065,12 @@ class MainWindow(QMainWindow):
 
         self.right_stack.setCurrentIndex(1)
         self.project_title.setText(project.name)
+        
+        dates_text = ""
+        if project.start_date and project.end_date:
+            dates_text = f" ({project.start_date} to {project.end_date})"
+        self.project_dates_label.setText(dates_text)
+
         self._refresh_teammates()
         self._refresh_expenses()
         self._refresh_summary()
@@ -944,6 +1091,8 @@ class MainWindow(QMainWindow):
         if not path: return
 
         summary, settlements, total = BalanceCalculator.calculate(project)
+        dates_html = f"<p><strong>Duration:</strong> {project.start_date} to {project.end_date}</p>" if project.start_date else ""
+        desc_html = f"<p><strong>Description:</strong> {project.description}</p>" if project.description else ""
 
         html = f"""
         <html>
@@ -962,7 +1111,9 @@ class MainWindow(QMainWindow):
         </head>
         <body>
             <h1>{project.name} - Balance Report</h1>
-            <p><strong>Total Project Expenses:</strong> RM{total:,.2f}</p>
+            {desc_html}
+            {dates_html}
+            <p><strong>Total Project Expenses:</strong> {self._format_money(total)}</p>
             
             <h2>1. Balance Summary</h2>
             <table>
@@ -972,7 +1123,7 @@ class MainWindow(QMainWindow):
             net = data["net"]
             color = "green" if net > 0 else "red" if net < 0 else ""
             sign = "+" if net > 0 else "-" if net < 0 else ""
-            html += f"<tr><td>{name}</td><td class='right'>RM{data['paid']:,.2f}</td><td class='right'>RM{data['share']:,.2f}</td><td class='right {color}'>{sign}RM{abs(net):,.2f}</td></tr>"
+            html += f"<tr><td>{name}</td><td class='right'>{self._format_money(data['paid'])}</td><td class='right'>{self._format_money(data['share'])}</td><td class='right {color}'>{sign}{self._format_money(abs(net))}</td></tr>"
         html += "</table>"
 
         html += "<h2>2. Settlements</h2><ul>"
@@ -981,7 +1132,7 @@ class MainWindow(QMainWindow):
             for s in settlements:
                 key = f"{s['from']}_{s['to']}_{s['amount']}"
                 css = "class='strike'" if key in project.settled_debts else ""
-                html += f"<li {css} style='margin-bottom:10px;'><strong>{s['from']}</strong> pays <strong>{s['to']}</strong>: RM{s['amount']:,.2f}</li>"
+                html += f"<li {css} style='margin-bottom:10px;'><strong>{s['from']}</strong> pays <strong>{s['to']}</strong>: {self._format_money(s['amount'])}</li>"
         html += "</ul>"
 
         html += """
@@ -991,7 +1142,7 @@ class MainWindow(QMainWindow):
         """
         for t in project.teammates:
             for e in t.expenses:
-                html += f"<tr><td>{t.name}</td><td>{e.description}</td><td class='right'>RM{e.amount:,.2f}</td></tr>"
+                html += f"<tr><td>{t.name}</td><td>{e.description}</td><td class='right'>{self._format_money(e.amount)}</td></tr>"
         html += "</table></body></html>"
 
         doc = QTextDocument()
@@ -1011,16 +1162,17 @@ class MainWindow(QMainWindow):
         if not path: return
 
         summary, settlements, _ = BalanceCalculator.calculate(project)
+        curr = self.settings_mgr.get("currency", "RM")
 
-        df_bal = pd.DataFrame([{"Name": k, "Total Paid (RM)": v["paid"], "Fair Share (RM)": v["share"], "Balance (RM)": v["net"]} for k, v in summary.items()])
+        df_bal = pd.DataFrame([{"Name": k, f"Total Paid ({curr})": v["paid"], f"Fair Share ({curr})": v["share"], f"Balance ({curr})": v["net"]} for k, v in summary.items()])
         
         settle_data = []
         for s in settlements:
             key = f"{s['from']}_{s['to']}_{s['amount']}"
-            settle_data.append({"From": s["from"], "To": s["to"], "Amount (RM)": s["amount"], "Paid": "Yes" if key in project.settled_debts else "No"})
+            settle_data.append({"From": s["from"], "To": s["to"], f"Amount ({curr})": s["amount"], "Paid": "Yes" if key in project.settled_debts else "No"})
         df_settle = pd.DataFrame(settle_data)
 
-        df_exp = pd.DataFrame([{"Paid By": t.name, "Description": e.description, "Amount (RM)": e.amount} for t in project.teammates for e in t.expenses])
+        df_exp = pd.DataFrame([{"Paid By": t.name, "Description": e.description, f"Amount ({curr})": e.amount} for t in project.teammates for e in t.expenses])
 
         with pd.ExcelWriter(path, engine="openpyxl") as writer:
             if not df_bal.empty: df_bal.to_excel(writer, sheet_name="Summary & Settlements", index=False, startrow=0)
@@ -1029,7 +1181,8 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Export Successful", f"Excel saved to:\n{path}")
 
     def _open_settings(self):
-        SettingsDialog(self, self.settings_mgr).exec()
+        if SettingsDialog(self, self.settings_mgr).exec():
+            self._refresh_right()
 
     def _restore_splitters(self):
         self.main_splitter.setSizes(self.settings_mgr.get("left_panel_sizes", [250, 850]))
