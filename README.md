@@ -38,7 +38,7 @@ This project does not have strict Python version limits (Tested on Python 3.14) 
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/YOUR_USERNAME/balance-separator.git
+git clone https://github.com/arinltte/balance-separator.git
 cd balance-separator
 ```
 
@@ -58,6 +58,10 @@ venv\Scripts\activate
 Install the required libraries using `pip`:
 ```bash
 pip install PyQt6 pandas openpyxl
+```
+or
+```bash
+pip install -r requirements.txt
 ```
 *Note: `PyQt6` is used for the Graphical User Interface. `pandas` and `openpyxl` are required for exporting data to Excel.*
 
