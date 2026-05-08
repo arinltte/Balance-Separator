@@ -4,6 +4,8 @@ Balance Separator is a fast, offline desktop application built with Python and P
 
 Perfect for road trips, shared house expenses, or collaborative projects.
 
+![Balance Separator Screenshot](BS_img1.png)
+
 ## ✨ Features
 
 ### 👥 Teammate & Profile Management
