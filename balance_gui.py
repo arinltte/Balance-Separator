@@ -1,180 +1,163 @@
 import sys
+import json
 import base64
 import urllib.request
+from datetime import datetime
+
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QLineEdit, QListWidget, QListWidgetItem, QSplitter, QTableWidget, QTableWidgetItem,
     QHeaderView, QInputDialog, QMessageBox, QAbstractItemView, QMenu, QScrollArea,
-    QFrame, QStackedWidget, QButtonGroup, QDialog, QComboBox, QFileDialog, QDateEdit
+    QFrame, QStackedWidget, QButtonGroup, QDialog, QComboBox, QFileDialog, QDateEdit, QColorDialog
 )
 from PyQt6.QtCore import Qt, QSize, QByteArray, QBuffer, QEvent, QDate
 from PyQt6.QtGui import QColor, QTextDocument, QPdfWriter, QPixmap, QIcon, QPainter, QPainterPath
 
 from balance_logic import SettingsManager, ProjectManager, BalanceCalculator
 
-APP_VERSION = "0.2.0"
-
-# ─── Stylesheets ───────────────────────────────────────────────────────────────
+APP_VERSION = "0.3.0"
 
 FONT_STACK = "'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
 
-LIGHT_STYLE = f"""
-QMainWindow, QDialog, QStackedWidget#rightStack, QWidget#projectView, QWidget#emptyView, QWidget#contentWidget {{ 
-    background-color: #FFFFFF; color: #333333; 
-}}
-QWidget#leftPanel {{ background-color: #F8F9FA; }}
-QWidget {{ font-family: {FONT_STACK}; font-size: 13px; }}
+# Currency formatting mapping: (Prefix, Suffix, Decimals, Space)
+CURRENCIES = {
+    "RM": ("RM", "", 2, False),
+    "$": ("$", "", 2, False),
+    "€": ("", "€", 2, True),
+    "£": ("£", "", 2, False),
+    "¥": ("¥", "", 0, False),
+    "A$": ("A$", "", 2, False),
+    "C$": ("C$", "", 2, False),
+    "₹": ("₹", "", 2, False),
+    "S$": ("S$", "", 2, False),
+    "CHF": ("", "CHF", 2, True),
+    "kr": ("", "kr", 2, True),
+}
 
-QListWidget {{
-    background-color: #FFFFFF; border: 1px solid #DEE2E6; border-radius: 6px;
-    padding: 4px; outline: none; color: #333333;
-}}
-QListWidget::item {{ padding: 8px 12px; border-radius: 4px; margin: 1px 0; }}
-QListWidget::item:selected {{ background-color: #4A90D9; color: #FFFFFF; }}
-QListWidget::item:hover:!selected {{ background-color: #E9ECEF; }}
+# ─── Dynamic Stylesheet Generator ──────────────────────────────────────────────
 
-QPushButton {{
-    background-color: #4A90D9; color: #FFFFFF; border: none; border-radius: 6px;
-    padding: 7px 16px; font-weight: bold;
-}}
-QPushButton:hover {{ background-color: #357ABD; }}
-QPushButton:pressed {{ background-color: #2A6099; }}
-QPushButton:disabled {{ background-color: #ADB5BD; }}
-QPushButton#secondaryBtn {{ background-color: #6C757D; }}
-QPushButton#secondaryBtn:hover {{ background-color: #5A6268; }}
-QPushButton#dangerBtn  {{ background-color: #DC3545; padding: 7px 16px; }}
-QPushButton#dangerBtn:hover {{ background-color: #C82333; }}
-QPushButton#deleteRowBtn {{ background-color: #DC3545; padding: 2px 8px; font-size: 12px; }}
-QPushButton#deleteRowBtn:hover {{ background-color: #C82333; }}
+def get_actual_theme(theme_setting):
+    if theme_setting.lower() == "system":
+        if QApplication.instance():
+            scheme = QApplication.styleHints().colorScheme()
+            return "dark" if scheme == Qt.ColorScheme.Dark else "light"
+        return "light"
+    return theme_setting.lower()
 
-QPushButton#avatarBtn {{
-    background-color: #E9ECEF; color: #333333; border: 2px solid transparent; border-radius: 24px; font-size: 14px; font-weight: bold; padding: 0;
-}}
-QPushButton#avatarBtn:checked {{ background-color: #D6E4F0; border-color: #4A90D9; color: #2A6099; }}
-QPushButton#avatarBtn:hover:!checked {{ background-color: #DEE2E6; }}
-QPushButton#avatarAddBtn {{
-    background-color: transparent; color: #6C757D; border: 2px dashed #CED4DA; border-radius: 24px; font-size: 18px; padding: 0;
-}}
-QPushButton#avatarAddBtn:hover {{ border-color: #4A90D9; color: #4A90D9; background-color: #F8F9FA; }}
+def generate_stylesheet(theme_setting, accent_hex):
+    actual_theme = get_actual_theme(theme_setting)
+    accent = QColor(accent_hex)
+    
+    if actual_theme == "dark":
+        bg = "#121212"
+        panel = "#1A1A1A"
+        text = "#E0E0E0"
+        border = "#333333"
+        hover_bg = "#2C2C2C"
+        input_bg = "#1E1E1E"
+        header_bg = "#161616"
+        second_btn = "#333333"
+        second_btn_hover = "#444444"
+        accent_hover = accent.lighter(115).name()
+        accent_pressed = accent.lighter(130).name()
+        selection_bg = QColor(accent.red(), accent.green(), accent.blue(), 60).name()
+        subtitle_color = "#AAAAAA"
+    else:
+        bg = "#FFFFFF"
+        panel = "#F8F9FA"
+        text = "#333333"
+        border = "#DEE2E6"
+        hover_bg = "#E9ECEF"
+        input_bg = "#FFFFFF"
+        header_bg = "#F8F9FA"
+        second_btn = "#6C757D"
+        second_btn_hover = "#5A6268"
+        accent_hover = accent.darker(110).name()
+        accent_pressed = accent.darker(120).name()
+        selection_bg = QColor(accent.red(), accent.green(), accent.blue(), 40).name()
+        subtitle_color = "#666666"
 
-QLineEdit, QDateEdit {{
-    border: 1px solid #DEE2E6; border-radius: 6px; padding: 7px 10px; background-color: #FFFFFF; color: #333333;
-}}
-QLineEdit:focus, QDateEdit:focus {{ border-color: #4A90D9; }}
-QLineEdit:disabled, QDateEdit:disabled {{ background-color: #F8F9FA; color: #ADB5BD; }}
-QDateEdit::drop-down {{ border: none; padding-right: 5px; }}
+    return f"""
+    QMainWindow, QDialog, QStackedWidget#rightStack, QWidget#projectView, QWidget#emptyView, QWidget#contentWidget {{ 
+        background-color: {bg}; color: {text}; 
+    }}
+    QWidget#leftPanel {{ background-color: {panel}; }}
+    QWidget {{ font-family: {FONT_STACK}; font-size: 13px; }}
 
-QComboBox {{
-    border: 1px solid #DEE2E6; border-radius: 6px; padding: 6px 10px; background-color: #FFFFFF; color: #333333;
-}}
-QComboBox:focus {{ border-color: #4A90D9; }}
-QComboBox QAbstractItemView, QComboBox QListView {{
-    background-color: #FFFFFF; color: #333333; selection-background-color: #4A90D9; selection-color: #FFFFFF;
-}}
+    QListWidget {{
+        background-color: {input_bg}; border: 1px solid {border}; border-radius: 6px;
+        padding: 4px; outline: none; color: {text};
+    }}
+    QListWidget::item {{ border-radius: 4px; margin: 1px 0; }}
+    QListWidget::item:selected {{ background-color: {selection_bg}; border: 1px solid {accent.name()}; color: {text}; }}
+    QListWidget::item:hover:!selected {{ background-color: {hover_bg}; }}
+    
+    QListWidget#settleList::item {{ padding: 8px 12px; }}
 
-QTableWidget {{
-    background-color: #FFFFFF; border: 1px solid #DEE2E6; border-radius: 6px;
-    gridline-color: #E9ECEF; color: #333333;
-}}
-QTableWidget::item {{ padding: 4px 8px; border-bottom: 1px solid #F0F2F5; }}
-QTableWidget::item:selected {{ background-color: #D6E4F0; color: #333333; }}
-QTableWidget QLineEdit {{ padding: 2px 4px; border: 1px solid #4A90D9; border-radius: 2px; }}
+    QPushButton {{
+        background-color: {accent.name()}; color: #FFFFFF; border: none; border-radius: 6px;
+        padding: 7px 16px; font-weight: bold;
+    }}
+    QPushButton:hover {{ background-color: {accent_hover}; }}
+    QPushButton:pressed {{ background-color: {accent_pressed}; }}
+    QPushButton:disabled {{ background-color: {border}; color: gray; }}
+    QPushButton#secondaryBtn {{ background-color: {second_btn}; }}
+    QPushButton#secondaryBtn:hover {{ background-color: {second_btn_hover}; }}
+    QPushButton#dangerBtn  {{ background-color: #DC3545; padding: 7px 16px; }}
+    QPushButton#dangerBtn:hover {{ background-color: #C82333; }}
+    QPushButton#deleteRowBtn {{ background-color: #DC3545; padding: 2px 8px; font-size: 12px; }}
+    QPushButton#deleteRowBtn:hover {{ background-color: #C82333; }}
 
-QHeaderView::section {{
-    background-color: #F8F9FA; border: none; border-bottom: 2px solid #DEE2E6;
-    padding: 6px 8px; font-weight: bold; color: #555555;
-}}
+    QPushButton#avatarBtn {{
+        background-color: {hover_bg}; color: {text}; border: 2px solid transparent; border-radius: 24px; font-size: 14px; font-weight: bold; padding: 0;
+    }}
+    QPushButton#avatarBtn:checked {{ background-color: {selection_bg}; border-color: {accent.name()}; color: {text}; }}
+    QPushButton#avatarBtn:hover:!checked {{ background-color: {border}; }}
+    QPushButton#avatarAddBtn {{
+        background-color: transparent; color: {second_btn}; border: 2px dashed {border}; border-radius: 24px; font-size: 18px; padding: 0;
+    }}
+    QPushButton#avatarAddBtn:hover {{ border-color: {accent.name()}; color: {accent.name()}; background-color: {input_bg}; }}
 
-QLabel {{ background: transparent; color: #333333; }}
-QLabel#headerLabel {{ font-size: 20px; font-weight: bold; color: #222222; }}
-QLabel#sectionLabel {{ font-size: 15px; font-weight: bold; color: #444444; }}
-QLabel#totalLabel {{ font-size: 16px; font-weight: bold; color: #4A90D9; }}
-QLabel#footerLabel {{ font-size: 11px; color: #888888; padding: 6px; }}
+    QLineEdit, QDateEdit {{
+        border: 1px solid {border}; border-radius: 6px; padding: 7px 10px; background-color: {input_bg}; color: {text};
+    }}
+    QLineEdit:focus, QDateEdit:focus {{ border-color: {accent.name()}; }}
+    QLineEdit:disabled, QDateEdit:disabled {{ background-color: {header_bg}; color: {subtitle_color}; border-color: {border}; }}
+    QDateEdit::drop-down {{ border: none; padding-right: 5px; }}
 
-QFrame#separator {{ background-color: #DEE2E6; max-height: 1px; }}
-QSplitter::handle {{ background-color: #DEE2E6; width: 4px; border-radius: 2px; }}
-QScrollArea {{ border: none; background: transparent; }}
-QWidget#avatarContainer {{ background-color: transparent; }}
-"""
+    QComboBox {{
+        border: 1px solid {border}; border-radius: 6px; padding: 6px 10px; background-color: {input_bg}; color: {text};
+    }}
+    QComboBox:focus {{ border-color: {accent.name()}; }}
+    QComboBox QAbstractItemView, QComboBox QListView {{
+        background-color: {input_bg}; color: {text}; selection-background-color: {accent.name()}; selection-color: #FFFFFF;
+    }}
 
-DARK_STYLE = f"""
-QMainWindow, QDialog, QStackedWidget#rightStack, QWidget#projectView, QWidget#emptyView, QWidget#contentWidget {{ 
-    background-color: #121212; color: #E0E0E0; 
-}}
-QWidget#leftPanel {{ background-color: #1A1A1A; }}
-QWidget {{ font-family: {FONT_STACK}; font-size: 13px; }}
+    QTableWidget {{
+        background-color: {input_bg}; border: 1px solid {border}; border-radius: 6px;
+        gridline-color: {border}; color: {text};
+    }}
+    QTableWidget::item {{ padding: 4px 8px; border-bottom: 1px solid {border}; }}
+    QTableWidget::item:selected {{ background-color: {selection_bg}; color: {text}; }}
+    QTableWidget QLineEdit {{ padding: 2px 4px; border: 1px solid {accent.name()}; border-radius: 2px; }}
 
-QListWidget {{
-    background-color: #1E1E1E; border: 1px solid #333333; border-radius: 6px;
-    padding: 4px; outline: none; color: #E0E0E0;
-}}
-QListWidget::item {{ padding: 8px 12px; border-radius: 4px; margin: 1px 0; }}
-QListWidget::item:selected {{ background-color: #4A90D9; color: #FFFFFF; }}
-QListWidget::item:hover:!selected {{ background-color: #2C2C2C; }}
+    QHeaderView::section {{
+        background-color: {header_bg}; border: none; border-bottom: 2px solid {border};
+        padding: 6px 8px; font-weight: bold; color: {subtitle_color};
+    }}
 
-QPushButton {{
-    background-color: #4A90D9; color: #FFFFFF; border: none; border-radius: 6px;
-    padding: 7px 16px; font-weight: bold;
-}}
-QPushButton:hover {{ background-color: #357ABD; }}
-QPushButton:pressed {{ background-color: #2A6099; }}
-QPushButton:disabled {{ background-color: #444444; color: #777777; }}
-QPushButton#secondaryBtn {{ background-color: #333333; }}
-QPushButton#secondaryBtn:hover {{ background-color: #444444; }}
-QPushButton#dangerBtn  {{ background-color: #DC3545; padding: 7px 16px; }}
-QPushButton#dangerBtn:hover {{ background-color: #C82333; }}
-QPushButton#deleteRowBtn {{ background-color: #DC3545; padding: 2px 8px; font-size: 12px; }}
-QPushButton#deleteRowBtn:hover {{ background-color: #C82333; }}
+    QLabel {{ background: transparent; color: {text}; }}
+    QLabel#headerLabel {{ font-size: 20px; font-weight: bold; color: {text}; }}
+    QLabel#sectionLabel {{ font-size: 15px; font-weight: bold; color: {text}; }}
+    QLabel#totalLabel {{ font-size: 16px; font-weight: bold; color: {accent.name()}; }}
+    QLabel#footerLabel {{ font-size: 11px; color: {subtitle_color}; padding: 6px; }}
+    QLabel#subTitleLabel {{ font-size: 11px; color: {subtitle_color}; }}
 
-QPushButton#avatarBtn {{
-    background-color: #2C2C2C; color: #E0E0E0; border: 2px solid transparent; border-radius: 24px; font-size: 14px; font-weight: bold; padding: 0;
-}}
-QPushButton#avatarBtn:checked {{ background-color: #2C4A6B; border-color: #6BB5FF; color: #FFFFFF; }}
-QPushButton#avatarBtn:hover:!checked {{ background-color: #3A3A3A; }}
-QPushButton#avatarAddBtn {{
-    background-color: transparent; color: #888888; border: 2px dashed #444444; border-radius: 24px; font-size: 18px; padding: 0;
-}}
-QPushButton#avatarAddBtn:hover {{ border-color: #6BB5FF; color: #6BB5FF; background-color: #1E1E1E; }}
-
-QLineEdit, QDateEdit {{
-    border: 1px solid #333333; border-radius: 6px; padding: 7px 10px; background-color: #1E1E1E; color: #E0E0E0;
-}}
-QLineEdit:focus, QDateEdit:focus {{ border-color: #4A90D9; }}
-QLineEdit:disabled, QDateEdit:disabled {{ background-color: #161616; color: #666666; border-color: #2A2A2A; }}
-QDateEdit::drop-down {{ border: none; padding-right: 5px; }}
-
-QComboBox {{
-    border: 1px solid #444444; border-radius: 6px; padding: 6px 10px; background-color: #1E1E1E; color: #E0E0E0;
-}}
-QComboBox:focus {{ border-color: #4A90D9; }}
-QComboBox QAbstractItemView, QComboBox QListView {{
-    background-color: #1E1E1E; color: #E0E0E0; selection-background-color: #4A90D9; selection-color: #FFFFFF;
-}}
-
-QTableWidget {{
-    background-color: #1E1E1E; border: 1px solid #333333; border-radius: 6px;
-    gridline-color: #2A2A2A; color: #E0E0E0;
-}}
-QTableWidget::item {{ padding: 4px 8px; border-bottom: 1px solid #2A2A2A; }}
-QTableWidget::item:selected {{ background-color: #2C4A6B; color: #FFFFFF; }}
-QTableWidget QLineEdit {{ padding: 2px 4px; border: 1px solid #4A90D9; border-radius: 2px; }}
-
-QHeaderView::section {{
-    background-color: #161616; border: none; border-bottom: 2px solid #333333;
-    padding: 6px 8px; font-weight: bold; color: #AAAAAA;
-}}
-
-QLabel {{ background: transparent; color: #E0E0E0; }}
-QLabel#headerLabel {{ font-size: 20px; font-weight: bold; color: #F0F0F0; }}
-QLabel#sectionLabel {{ font-size: 15px; font-weight: bold; color: #CCCCCC; }}
-QLabel#totalLabel {{ font-size: 16px; font-weight: bold; color: #6BB5FF; }}
-QLabel#footerLabel {{ font-size: 11px; color: #666666; padding: 6px; }}
-
-QFrame#separator {{ background-color: #333333; max-height: 1px; }}
-QSplitter::handle {{ background-color: #444444; width: 4px; border-radius: 2px; }}
-QScrollArea {{ border: none; background: transparent; }}
-QWidget#avatarContainer {{ background-color: transparent; }}
-"""
+    QFrame#separator {{ background-color: {border}; max-height: 1px; }}
+    QSplitter::handle {{ background-color: {border}; width: 4px; border-radius: 2px; }}
+    QScrollArea {{ border: none; background: transparent; }}
+    QWidget#avatarContainer {{ background-color: transparent; }}
+    """
 
 # ─── Utility Methods ───────────────────────────────────────────────────────────
 
@@ -201,7 +184,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.settings_mgr = settings_mgr
         self.setWindowTitle("Settings")
-        self.setFixedSize(350, 320)
+        self.setFixedSize(380, 420)
         
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
@@ -209,24 +192,51 @@ class SettingsDialog(QDialog):
         # Theme Section
         theme_layout = QHBoxLayout()
         theme_label = QLabel("Theme:")
-        theme_label.setFixedWidth(80)
+        theme_label.setFixedWidth(100)
         theme_layout.addWidget(theme_label)
         
         self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["Light", "Dark"])
-        current_theme = self.settings_mgr.get("theme", "light").capitalize()
+        self.theme_combo.addItems(["System", "Light", "Dark"])
+        current_theme = self.settings_mgr.get("theme", "system").capitalize()
         self.theme_combo.setCurrentText(current_theme)
         theme_layout.addWidget(self.theme_combo)
         layout.addLayout(theme_layout)
 
+        # Accent Color Section
+        accent_layout = QHBoxLayout()
+        accent_label = QLabel("Accent Color:")
+        accent_label.setFixedWidth(100)
+        accent_layout.addWidget(accent_label)
+        
+        self.color_hex = self.settings_mgr.get("accent_color", "#4A90D9")
+        self.color_btn = QPushButton("Pick Color")
+        self.color_btn.setObjectName("secondaryBtn")
+        self._update_color_btn_style()
+        self.color_btn.clicked.connect(self._pick_color)
+        accent_layout.addWidget(self.color_btn)
+        layout.addLayout(accent_layout)
+
+        # Project Date Display
+        date_layout = QHBoxLayout()
+        date_label = QLabel("Project List Date:")
+        date_label.setFixedWidth(100)
+        date_layout.addWidget(date_label)
+        
+        self.date_combo = QComboBox()
+        self.date_combo.addItems(["Show Last Modified", "Show Created Date"])
+        disp_pref = self.settings_mgr.get("project_date_display", "modified")
+        self.date_combo.setCurrentIndex(0 if disp_pref == "modified" else 1)
+        date_layout.addWidget(self.date_combo)
+        layout.addLayout(date_layout)
+
         # Currency Section
         currency_layout = QHBoxLayout()
         curr_label = QLabel("Currency:")
-        curr_label.setFixedWidth(80)
+        curr_label.setFixedWidth(100)
         currency_layout.addWidget(curr_label)
         
         self.curr_combo = QComboBox()
-        self.curr_combo.addItems(["RM", "$", "€", "£", "¥"])
+        self.curr_combo.addItems(list(CURRENCIES.keys()))
         current_currency = self.settings_mgr.get("currency", "RM")
         self.curr_combo.setCurrentText(current_currency)
         currency_layout.addWidget(self.curr_combo)
@@ -242,16 +252,23 @@ class SettingsDialog(QDialog):
 
         layout.addStretch()
 
-        # Save Button
         save_btn = QPushButton("Save Settings")
         save_btn.clicked.connect(self._save_and_close)
         layout.addWidget(save_btn)
 
-        # Footer 
         footer = QLabel(f"2026 Developed by Chen Jin Shen\ncjshen00@gmail.com\n\nVersion {APP_VERSION}")
         footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
         footer.setObjectName("footerLabel")
         layout.addWidget(footer)
+
+    def _update_color_btn_style(self):
+        self.color_btn.setStyleSheet(f"background-color: {self.color_hex}; color: #FFFFFF; font-weight: bold;")
+
+    def _pick_color(self):
+        color = QColorDialog.getColor(QColor(self.color_hex), self, "Select Accent Color")
+        if color.isValid():
+            self.color_hex = color.name()
+            self._update_color_btn_style()
 
     def _check_for_updates(self):
         self.update_btn.setText("Checking...")
@@ -264,10 +281,8 @@ class SettingsDialog(QDialog):
             )
             response = urllib.request.urlopen(req, timeout=5)
             final_url = response.geturl()
-            # final_url normally looks like https://github.com/.../releases/tag/vX.Y.Z
             tag = final_url.split('/')[-1]
             
-            # Simple version comparison
             current_tag = f"v{APP_VERSION}"
             if tag > current_tag:
                 QMessageBox.information(self, "Update Available", f"A new version ({tag}) is available!\nPlease check GitHub to download the latest release.")
@@ -280,11 +295,13 @@ class SettingsDialog(QDialog):
             self.update_btn.setEnabled(True)
 
     def _save_and_close(self):
-        selected_theme = self.theme_combo.currentText().lower()
-        selected_currency = self.curr_combo.currentText()
-        self.settings_mgr.set("theme", selected_theme)
-        self.settings_mgr.set("currency", selected_currency)
-        QApplication.instance().setStyleSheet(DARK_STYLE if selected_theme == "dark" else LIGHT_STYLE)
+        self.settings_mgr.set("theme", self.theme_combo.currentText().lower())
+        self.settings_mgr.set("accent_color", self.color_hex)
+        self.settings_mgr.set("currency", self.curr_combo.currentText())
+        self.settings_mgr.set("project_date_display", "modified" if self.date_combo.currentIndex() == 0 else "created")
+        
+        style = generate_stylesheet(self.settings_mgr.get("theme"), self.color_hex)
+        QApplication.instance().setStyleSheet(style)
         self.accept()
 
 
@@ -298,12 +315,10 @@ class ProjectEditDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
-        # Project Name
         layout.addWidget(QLabel("Project Name:"))
         self.name_input = QLineEdit(project.name)
         layout.addWidget(self.name_input)
 
-        # Start Date
         layout.addWidget(QLabel("Start Date:"))
         self.start_input = QDateEdit()
         self.start_input.setCalendarPopup(True)
@@ -313,7 +328,6 @@ class ProjectEditDialog(QDialog):
             self.start_input.setDate(QDate.currentDate())
         layout.addWidget(self.start_input)
 
-        # End Date
         layout.addWidget(QLabel("End Date:"))
         self.end_input = QDateEdit()
         self.end_input.setCalendarPopup(True)
@@ -323,14 +337,12 @@ class ProjectEditDialog(QDialog):
             self.end_input.setDate(QDate.currentDate())
         layout.addWidget(self.end_input)
 
-        # Description
         layout.addWidget(QLabel("Description (Optional):"))
         self.desc_input = QLineEdit(project.description)
         layout.addWidget(self.desc_input)
 
         layout.addStretch()
 
-        # Delete Button
         del_btn = QPushButton("Delete Project")
         del_btn.setObjectName("dangerBtn")
         del_btn.clicked.connect(self._delete_project)
@@ -338,7 +350,6 @@ class ProjectEditDialog(QDialog):
 
         layout.addWidget(QFrame(frameShape=QFrame.Shape.HLine))
 
-        # Action Buttons
         btn_layout = QHBoxLayout()
         save_btn = QPushButton("Save Changes")
         save_btn.clicked.connect(self.accept)
@@ -472,18 +483,26 @@ class MainWindow(QMainWindow):
         self.avatar_btn_group.idClicked.connect(self._on_teammate_changed)
 
         self._build_ui()
-        QApplication.instance().setStyleSheet(DARK_STYLE if self.settings_mgr.get("theme", "light") == "dark" else LIGHT_STYLE)
+        self._apply_theme()
         self._restore_splitters()
         
         self.showMaximized()
         self._refresh_projects()
 
+    def _apply_theme(self):
+        theme = self.settings_mgr.get("theme", "system")
+        accent = self.settings_mgr.get("accent_color", "#4A90D9")
+        style = generate_stylesheet(theme, accent)
+        QApplication.instance().setStyleSheet(style)
+
     def _format_money(self, amount: float) -> str:
-        curr = self.settings_mgr.get("currency", "RM")
-        if curr == "RM":
-            return f"RM{amount:,.2f}"
-        else:
-            return f"{amount:,.2f}{curr}"
+        curr_key = self.settings_mgr.get("currency", "RM")
+        prefix, suffix, decs, use_space = CURRENCIES.get(curr_key, ("RM", "", 2, False))
+        amt_str = f"{amount:,.{decs}f}"
+        space = " " if use_space else ""
+        
+        if prefix: return f"{prefix}{space}{amt_str}"
+        return f"{amt_str}{space}{suffix}"
 
     def _build_ui(self):
         self.setWindowTitle("Balance Separator")
@@ -502,6 +521,7 @@ class MainWindow(QMainWindow):
         left.setObjectName("leftPanel")
         left_lay = QVBoxLayout(left)
         left_lay.setContentsMargins(16, 20, 16, 16)
+        
         lbl_projects = QLabel("📁  Projects")
         lbl_projects.setObjectName("sectionLabel")
         left_lay.addWidget(lbl_projects)
@@ -514,11 +534,22 @@ class MainWindow(QMainWindow):
         self.project_list.customContextMenuRequested.connect(self._project_context_menu)
         left_lay.addWidget(self.project_list)
 
-        btn_new = QPushButton("+  New Project")
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(8)
+        
+        btn_new = QPushButton("+ New")
         btn_new.setObjectName("secondaryBtn")
         btn_new.clicked.connect(self._add_project)
-        left_lay.addWidget(btn_new)
-        left.setMinimumWidth(200)
+        
+        btn_import = QPushButton("⬇ Import")
+        btn_import.setObjectName("secondaryBtn")
+        btn_import.clicked.connect(self._import_project)
+        
+        btn_layout.addWidget(btn_new)
+        btn_layout.addWidget(btn_import)
+        left_lay.addLayout(btn_layout)
+        
+        left.setMinimumWidth(220)
 
         # ── Right Panel ──
         right = QWidget()
@@ -526,6 +557,37 @@ class MainWindow(QMainWindow):
         right_outer = QVBoxLayout(right)
         right_outer.setContentsMargins(0, 0, 0, 0)
 
+        # Global Top Bar (Always Visible)
+        top_bar_widget = QWidget()
+        top_bar_widget.setContentsMargins(24, 20, 24, 10)
+        top_bar_lay = QHBoxLayout(top_bar_widget)
+        top_bar_lay.setContentsMargins(0, 0, 0, 0)
+        
+        self.global_title = QLabel("Welcome to Balance Separator")
+        self.global_title.setObjectName("headerLabel")
+        top_bar_lay.addWidget(self.global_title)
+        
+        self.global_dates = QLabel("")
+        self.global_dates.setObjectName("footerLabel")
+        top_bar_lay.addWidget(self.global_dates)
+        
+        top_bar_lay.addStretch()
+
+        self.settings_btn = QPushButton("⚙ Settings")
+        self.settings_btn.setObjectName("secondaryBtn")
+        self.settings_btn.setFixedSize(100, 32)
+        self.settings_btn.clicked.connect(self._open_settings)
+        top_bar_lay.addWidget(self.settings_btn)
+
+        right_outer.addWidget(top_bar_widget)
+
+        sep = QFrame()
+        sep.setObjectName("separator")
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFixedHeight(1)
+        right_outer.addWidget(sep)
+
+        # ── Stacked Content Area ──
         self.right_stack = QStackedWidget()
         self.right_stack.setObjectName("rightStack")
         
@@ -533,47 +595,23 @@ class MainWindow(QMainWindow):
         self.empty_view = QWidget()
         self.empty_view.setObjectName("emptyView")
         empty_lay = QVBoxLayout(self.empty_view)
-        empty_title = QLabel("Welcome to Balance Separator")
-        empty_title.setObjectName("headerLabel")
-        empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        empty_lay.addWidget(empty_title)
+        empty_lbl = QLabel("Select or create a project to begin.")
+        empty_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_lbl.setObjectName("footerLabel")
+        empty_lay.addWidget(empty_lbl)
         self.right_stack.addWidget(self.empty_view)
 
         # Project View
         self.project_view = QWidget()
         self.project_view.setObjectName("projectView")
         right_lay = QVBoxLayout(self.project_view)
-        right_lay.setContentsMargins(24, 20, 24, 20)
-
-        top_bar = QHBoxLayout()
-        self.project_title = QLabel("Project Title")
-        self.project_title.setObjectName("headerLabel")
-        top_bar.addWidget(self.project_title)
-        
-        self.project_dates_label = QLabel("")
-        self.project_dates_label.setObjectName("footerLabel")
-        top_bar.addWidget(self.project_dates_label)
-        
-        top_bar.addStretch()
-
-        self.settings_btn = QPushButton("⚙ Settings")
-        self.settings_btn.setObjectName("secondaryBtn")
-        self.settings_btn.setFixedSize(100, 32)
-        self.settings_btn.clicked.connect(self._open_settings)
-        top_bar.addWidget(self.settings_btn)
-        right_lay.addLayout(top_bar)
-
-        sep = QFrame()
-        sep.setObjectName("separator")
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setFixedHeight(1)
-        right_lay.addWidget(sep)
+        right_lay.setContentsMargins(24, 10, 24, 20)
 
         self.content_splitter = QSplitter(Qt.Orientation.Horizontal)
         
         self.left_col_widget = QWidget()
         self.left_col_layout = QVBoxLayout(self.left_col_widget)
-        self.left_col_layout.setContentsMargins(0, 10, 15, 0)
+        self.left_col_layout.setContentsMargins(0, 0, 15, 0)
         self._build_teammates_section(self.left_col_layout)
         self._build_expenses_section(self.left_col_layout)
         
@@ -581,7 +619,7 @@ class MainWindow(QMainWindow):
         
         self.top_right_widget = QWidget()
         top_right_layout = QVBoxLayout(self.top_right_widget)
-        top_right_layout.setContentsMargins(15, 10, 0, 10)
+        top_right_layout.setContentsMargins(15, 0, 0, 10)
         self._build_balance_section(top_right_layout)
 
         self.bottom_right_widget = QWidget()
@@ -701,6 +739,7 @@ class MainWindow(QMainWindow):
         parent_layout.addWidget(lbl)
 
         self.settle_list = QListWidget()
+        self.settle_list.setObjectName("settleList")
         self.settle_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.settle_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.settle_list.setMinimumHeight(100)
@@ -734,11 +773,43 @@ class MainWindow(QMainWindow):
         return super().eventFilter(obj, event)
 
     # ── UI Actions ──
+    def _create_project_list_widget(self, project) -> QWidget:
+        widget = QWidget()
+        widget.setStyleSheet("background: transparent;")
+        lay = QVBoxLayout(widget)
+        lay.setContentsMargins(8, 4, 8, 4)
+        lay.setSpacing(2)
+        
+        lbl_title = QLabel(project.name)
+        lbl_title.setStyleSheet("font-weight: bold;")
+        
+        disp_pref = self.settings_mgr.get("project_date_display", "modified")
+        date_str = project.updated_at if disp_pref == "modified" else project.created_at
+        try:
+            dt = datetime.fromisoformat(date_str)
+            date_label = dt.strftime("%b %d, %Y %H:%M")
+        except:
+            date_label = "Unknown date"
+            
+        prefix = "Modified: " if disp_pref == "modified" else "Created: "
+        lbl_sub = QLabel(f"{prefix}{date_label}")
+        lbl_sub.setObjectName("subTitleLabel")
+        
+        lay.addWidget(lbl_title)
+        lay.addWidget(lbl_sub)
+        return widget
+
     def _refresh_projects(self):
         self.project_list.blockSignals(True)
         self.project_list.clear()
+        
         for p in self.project_mgr.projects:
-            self.project_list.addItem(p.name)
+            item = QListWidgetItem()
+            item.setSizeHint(QSize(200, 48))
+            self.project_list.addItem(item)
+            widget = self._create_project_list_widget(p)
+            self.project_list.setItemWidget(item, widget)
+
         self.project_list.blockSignals(False)
 
         if self.project_mgr.projects:
@@ -746,8 +817,18 @@ class MainWindow(QMainWindow):
             self.project_list.setCurrentRow(self.current_project_idx)
         else:
             self.current_project_idx = -1
+            self.global_title.setText("Welcome to Balance Separator")
+            self.global_dates.setText("")
 
         self._refresh_right()
+
+    def _update_project_list_item(self, idx: int):
+        """Silently updates the subtitle timestamp of a specific project item without a full list rebuild."""
+        item = self.project_list.item(idx)
+        if item:
+            project = self.project_mgr.get_project(idx)
+            new_widget = self._create_project_list_widget(project)
+            self.project_list.setItemWidget(item, new_widget)
 
     def _on_project_changed(self, row: int):
         self.current_project_idx = row
@@ -760,6 +841,27 @@ class MainWindow(QMainWindow):
             self.project_mgr.add_project(name.strip())
             self.current_project_idx = len(self.project_mgr.projects) - 1
             self._refresh_projects()
+            
+    def _import_project(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Import Project JSON", "", "JSON Files (*.json)")
+        if not path: return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            # Validation check
+            if not isinstance(data, dict) or "name" not in data or "teammates" not in data:
+                raise ValueError("Invalid project JSON structure.")
+                
+            proj = self.project_mgr._from_json([data])[0]
+            self.project_mgr.projects.append(proj)
+            self.project_mgr.save()
+            
+            self.current_project_idx = len(self.project_mgr.projects) - 1
+            self._refresh_projects()
+            QMessageBox.information(self, "Import Successful", f"Project '{proj.name}' imported successfully.")
+        except Exception as e:
+            QMessageBox.warning(self, "Import Failed", f"Could not import file:\n{str(e)}")
 
     def _project_context_menu(self, pos):
         item = self.project_list.itemAt(pos)
@@ -784,12 +886,12 @@ class MainWindow(QMainWindow):
                     dlg.start_input.date().toString(Qt.DateFormat.ISODate),
                     dlg.end_input.date().toString(Qt.DateFormat.ISODate)
                 )
-                self._refresh_projects()
-            elif res == 2:  # Custom Delete code
+                self._update_project_list_item(row)
+                self._refresh_right()
+            elif res == 2:
                 self.project_mgr.remove_project(row)
                 self.current_project_idx = min(self.current_project_idx, len(self.project_mgr.projects) - 1)
                 self._refresh_projects()
-
 
     def _get_initials(self, name: str) -> str:
         parts = name.strip().split()
@@ -862,6 +964,7 @@ class MainWindow(QMainWindow):
             if result is None:
                 QMessageBox.warning(self, "Duplicate", "A teammate with that name already exists.")
                 return
+            self._update_project_list_item(self.current_project_idx)
             project = self.project_mgr.get_project(self.current_project_idx)
             self.current_teammate_idx = len(project.teammates) - 1
             self._refresh_right()
@@ -885,6 +988,7 @@ class MainWindow(QMainWindow):
                     dlg.desc_input.text().strip(), 
                     dlg.avatar_b64
                 )
+                self._update_project_list_item(self.current_project_idx)
                 self._refresh_right()
             elif res == 2:
                 self.project_mgr.remove_teammate(self.current_project_idx, tidx)
@@ -892,6 +996,7 @@ class MainWindow(QMainWindow):
                     self.current_teammate_idx = -1
                 elif self.current_teammate_idx > tidx:
                     self.current_teammate_idx -= 1
+                self._update_project_list_item(self.current_project_idx)
                 self._refresh_right()
 
     def _update_expense_ui_state(self):
@@ -947,11 +1052,14 @@ class MainWindow(QMainWindow):
         if col == 0:
             new_desc = self.exp_table.item(row, col).text()
             self.project_mgr.update_expense_description(self.current_project_idx, self.current_teammate_idx, row, new_desc)
+            self._update_project_list_item(self.current_project_idx)
 
     def _add_expense(self):
         desc = self.desc_input.text().strip() or "Undefined"
-        # Sanitize input depending on whatever string symbols they might have pasted
-        amt_text = self.amt_input.text().strip().replace("RM", "").replace(",", "").replace("$", "").replace("€", "").replace("£", "").replace("¥", "")
+        
+        amt_text = self.amt_input.text().strip()
+        for sym in list(CURRENCIES.keys()) + [" ", ","]:
+            amt_text = amt_text.replace(sym, "")
 
         try:
             amt = float(amt_text)
@@ -962,6 +1070,8 @@ class MainWindow(QMainWindow):
             return
 
         self.project_mgr.add_expense(self.current_project_idx, self.current_teammate_idx, desc, amt)
+        self._update_project_list_item(self.current_project_idx)
+        
         self.desc_input.clear()
         self.amt_input.clear()
         self.amt_input.setFocus()
@@ -970,6 +1080,7 @@ class MainWindow(QMainWindow):
 
     def _remove_expense(self, tidx: int, eidx: int):
         self.project_mgr.remove_expense(self.current_project_idx, tidx, eidx)
+        self._update_project_list_item(self.current_project_idx)
         self._refresh_expenses()
         self._refresh_summary()
 
@@ -1019,9 +1130,13 @@ class MainWindow(QMainWindow):
             item.setFlags(Qt.ItemFlag.NoItemFlags)
             self.settle_list.addItem(item)
         else:
+            saved_settlements = self.settings_mgr.get("settlements", {}).get(project.name, [])
+            
             for s in settlements:
-                key = f"{s['from']}_{s['to']}_{s['amount']}"
-                is_settled = key in project.settled_debts
+                # Key is precise integer (cents) to avoid float mismatch persistence bugs
+                cents_amt = int(round(s['amount'] * 100))
+                key = f"{s['from']}_{s['to']}_{cents_amt}"
+                is_settled = key in saved_settlements
                 
                 text = f"{s['from']}  ➜  {s['to']}:  {self._format_money(s['amount'])}"
                 item = QListWidgetItem(text)
@@ -1045,7 +1160,9 @@ class MainWindow(QMainWindow):
         key = item.data(Qt.ItemDataRole.UserRole)
         checked = item.checkState() == Qt.CheckState.Checked
         
-        self.project_mgr.toggle_settlement(self.current_project_idx, key, checked)
+        project = self.project_mgr.get_project(self.current_project_idx)
+        if project:
+            self.settings_mgr.toggle_settlement(project.name, key, checked)
         
         font = item.font()
         font.setStrikeOut(checked)
@@ -1054,22 +1171,24 @@ class MainWindow(QMainWindow):
         if checked:
             item.setForeground(QColor("#888888"))
         else:
-            is_dark = self.settings_mgr.get("theme", "light") == "dark"
+            is_dark = get_actual_theme(self.settings_mgr.get("theme", "system")) == "dark"
             item.setForeground(QColor("#E0E0E0") if is_dark else QColor("#333333"))
 
     def _refresh_right(self):
         project = self.project_mgr.get_project(self.current_project_idx)
         if not project:
             self.right_stack.setCurrentIndex(0)
+            self.global_title.setText("Welcome to Balance Separator")
+            self.global_dates.setText("")
             return
 
         self.right_stack.setCurrentIndex(1)
-        self.project_title.setText(project.name)
+        self.global_title.setText(project.name)
         
         dates_text = ""
         if project.start_date and project.end_date:
             dates_text = f" ({project.start_date} to {project.end_date})"
-        self.project_dates_label.setText(dates_text)
+        self.global_dates.setText(dates_text)
 
         self._refresh_teammates()
         self._refresh_expenses()
@@ -1081,10 +1200,24 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
         act_pdf = menu.addAction("📄  Export to PDF")
         act_excel = menu.addAction("📊  Export to Excel")
+        act_json = menu.addAction("📦  Export to JSON")
         btn = self.sender()
         chosen = menu.exec(btn.mapToGlobal(btn.rect().topRight()))
+        
         if chosen == act_pdf: self._export_pdf(project)
         elif chosen == act_excel: self._export_excel(project)
+        elif chosen == act_json: self._export_json(project)
+
+    def _export_json(self, project):
+        path, _ = QFileDialog.getSaveFileName(self, "Export Project JSON", f"{project.name}.json", "JSON Files (*.json)")
+        if not path: return
+        try:
+            data = self.project_mgr._to_json([project])[0]
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4)
+            QMessageBox.information(self, "Export Successful", f"JSON saved to:\n{path}")
+        except Exception as e:
+            QMessageBox.warning(self, "Export Failed", f"Could not export file:\n{str(e)}")
 
     def _export_pdf(self, project):
         path, _ = QFileDialog.getSaveFileName(self, "Save PDF", f"{project.name}_Report.pdf", "PDF Files (*.pdf)")
@@ -1129,9 +1262,11 @@ class MainWindow(QMainWindow):
         html += "<h2>2. Settlements</h2><ul>"
         if not settlements: html += "<li>✅ All settled! No transfers needed.</li>"
         else:
+            saved_settlements = self.settings_mgr.get("settlements", {}).get(project.name, [])
             for s in settlements:
-                key = f"{s['from']}_{s['to']}_{s['amount']}"
-                css = "class='strike'" if key in project.settled_debts else ""
+                cents_amt = int(round(s['amount'] * 100))
+                key = f"{s['from']}_{s['to']}_{cents_amt}"
+                css = "class='strike'" if key in saved_settlements else ""
                 html += f"<li {css} style='margin-bottom:10px;'><strong>{s['from']}</strong> pays <strong>{s['to']}</strong>: {self._format_money(s['amount'])}</li>"
         html += "</ul>"
 
@@ -1167,9 +1302,11 @@ class MainWindow(QMainWindow):
         df_bal = pd.DataFrame([{"Name": k, f"Total Paid ({curr})": v["paid"], f"Fair Share ({curr})": v["share"], f"Balance ({curr})": v["net"]} for k, v in summary.items()])
         
         settle_data = []
+        saved_settlements = self.settings_mgr.get("settlements", {}).get(project.name, [])
         for s in settlements:
-            key = f"{s['from']}_{s['to']}_{s['amount']}"
-            settle_data.append({"From": s["from"], "To": s["to"], f"Amount ({curr})": s["amount"], "Paid": "Yes" if key in project.settled_debts else "No"})
+            cents_amt = int(round(s['amount'] * 100))
+            key = f"{s['from']}_{s['to']}_{cents_amt}"
+            settle_data.append({"From": s["from"], "To": s["to"], f"Amount ({curr})": s["amount"], "Paid": "Yes" if key in saved_settlements else "No"})
         df_settle = pd.DataFrame(settle_data)
 
         df_exp = pd.DataFrame([{"Paid By": t.name, "Description": e.description, f"Amount ({curr})": e.amount} for t in project.teammates for e in t.expenses])
@@ -1182,7 +1319,8 @@ class MainWindow(QMainWindow):
 
     def _open_settings(self):
         if SettingsDialog(self, self.settings_mgr).exec():
-            self._refresh_right()
+            self._apply_theme()
+            self._refresh_projects()  # Updates timestamps/currency throughout UI
 
     def _restore_splitters(self):
         self.main_splitter.setSizes(self.settings_mgr.get("left_panel_sizes", [250, 850]))
@@ -1203,3 +1341,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

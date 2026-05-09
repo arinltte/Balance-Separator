@@ -1,11 +1,24 @@
 import json
 import os
+import platform
+from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass, field
 from copy import deepcopy
 from typing import Optional
 
-APP_DIR = Path.home() / ".balance_separator"
+
+# ─── Cross-Platform Data Directory ──────────────────────────────────────────────
+
+def get_app_dir() -> Path:
+    system = platform.system()
+    if system == "Windows":
+        return Path.home() / "Documents" / "BalanceSeparator"
+    else:
+        # macOS and Linux hidden directory
+        return Path.home() / ".balance_separator"
+
+APP_DIR = get_app_dir()
 APP_DIR.mkdir(parents=True, exist_ok=True)
 
 CONFIG_FILE = APP_DIR / "config.json"
@@ -34,19 +47,23 @@ class Project:
     description: str = ""
     start_date: str = ""
     end_date: str = ""
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
     teammates: list = field(default_factory=list)
-    settled_debts: list = field(default_factory=list)  # tracks "{from}_{to}_{amount}"
 
 
 # ─── Settings Manager ──────────────────────────────────────────────────────────
 
 class SettingsManager:
     DEFAULTS = {
-        "theme": "light",
+        "theme": "system",
+        "accent_color": "#4A90D9",
         "currency": "RM",
+        "project_date_display": "modified",  # 'modified' or 'created'
         "left_panel_sizes": [250, 850],
         "content_splitter_sizes": [400, 400],
         "right_col_sizes": [300, 300],
+        "settlements": {}  # Tracks checkbox states per project
     }
 
     def __init__(self):
@@ -55,7 +72,7 @@ class SettingsManager:
     def _load(self) -> dict:
         if os.path.exists(CONFIG_FILE):
             try:
-                with open(CONFIG_FILE, "r") as f:
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                     saved = json.load(f)
                     return {**self.DEFAULTS, **saved}
             except (json.JSONDecodeError, IOError):
@@ -64,7 +81,7 @@ class SettingsManager:
 
     def save(self):
         try:
-            with open(CONFIG_FILE, "w") as f:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                 json.dump(self.settings, f, indent=4)
         except IOError:
             pass
@@ -75,6 +92,18 @@ class SettingsManager:
     def set(self, key: str, value):
         self.settings[key] = value
         self.save()
+
+    def toggle_settlement(self, project_name: str, key: str, state: bool):
+        s_map = self.get("settlements", {})
+        if project_name not in s_map:
+            s_map[project_name] = []
+            
+        if state and key not in s_map[project_name]:
+            s_map[project_name].append(key)
+        elif not state and key in s_map[project_name]:
+            s_map[project_name].remove(key)
+            
+        self.set("settlements", s_map)
 
 
 # ─── Project Manager ───────────────────────────────────────────────────────────
@@ -92,9 +121,10 @@ class ProjectManager:
                 name=p["name"],
                 description=p.get("description", ""),
                 start_date=p.get("start_date", ""),
-                end_date=p.get("end_date", "")
+                end_date=p.get("end_date", ""),
+                created_at=p.get("created_at", datetime.now().isoformat()),
+                updated_at=p.get("updated_at", datetime.now().isoformat())
             )
-            proj.settled_debts = p.get("settled_debts", [])
             for t in p.get("teammates", []):
                 mate = Teammate(
                     name=t["name"], 
@@ -115,7 +145,8 @@ class ProjectManager:
                 "description": p.description,
                 "start_date": p.start_date,
                 "end_date": p.end_date,
-                "settled_debts": p.settled_debts,
+                "created_at": p.created_at,
+                "updated_at": p.updated_at,
                 "teammates": [
                     {
                         "name": t.name,
@@ -132,17 +163,23 @@ class ProjectManager:
     def _load(self):
         if os.path.exists(PROJECTS_FILE):
             try:
-                with open(PROJECTS_FILE, "r") as f:
+                with open(PROJECTS_FILE, "r", encoding="utf-8") as f:
                     self.projects = self._from_json(json.load(f))
             except (json.JSONDecodeError, IOError):
                 self.projects = []
 
     def save(self):
         try:
-            with open(PROJECTS_FILE, "w") as f:
+            with open(PROJECTS_FILE, "w", encoding="utf-8") as f:
                 json.dump(self._to_json(self.projects), f, indent=4)
         except IOError:
             pass
+
+    def _touch(self, idx: int):
+        """Updates the modified timestamp of the project and saves."""
+        if 0 <= idx < len(self.projects):
+            self.projects[idx].updated_at = datetime.now().isoformat()
+            self.save()
 
     def get_project(self, idx: int) -> Optional[Project]:
         if 0 <= idx < len(self.projects):
@@ -161,7 +198,7 @@ class ProjectManager:
             self.projects[idx].description = desc
             self.projects[idx].start_date = start_date
             self.projects[idx].end_date = end_date
-            self.save()
+            self._touch(idx)
             return True
         return False
 
@@ -179,7 +216,7 @@ class ProjectManager:
             if t.name.lower() == name.lower(): return None
         mate = Teammate(name=name)
         project.teammates.append(mate)
-        self.save()
+        self._touch(project_idx)
         return mate
 
     def update_teammate(self, project_idx: int, teammate_idx: int, name: str, desc: str, avatar_data: str):
@@ -189,7 +226,7 @@ class ProjectManager:
             t.name = name
             t.description = desc
             t.avatar_data = avatar_data
-            self.save()
+            self._touch(project_idx)
             return True
         return False
 
@@ -197,7 +234,7 @@ class ProjectManager:
         project = self.get_project(project_idx)
         if project and 0 <= teammate_idx < len(project.teammates):
             del project.teammates[teammate_idx]
-            self.save()
+            self._touch(project_idx)
             return True
         return False
 
@@ -206,7 +243,7 @@ class ProjectManager:
         if project and 0 <= teammate_idx < len(project.teammates):
             expense = Expense(description=description, amount=round(amount, 2))
             project.teammates[teammate_idx].expenses.append(expense)
-            self.save()
+            self._touch(project_idx)
             return expense
         return None
 
@@ -216,7 +253,7 @@ class ProjectManager:
             mate = project.teammates[teammate_idx]
             if 0 <= expense_idx < len(mate.expenses):
                 del mate.expenses[expense_idx]
-                self.save()
+                self._touch(project_idx)
                 return True
         return False
 
@@ -226,18 +263,9 @@ class ProjectManager:
             mate = project.teammates[teammate_idx]
             if 0 <= expense_idx < len(mate.expenses):
                 mate.expenses[expense_idx].description = new_desc.strip() or "Undefined"
-                self.save()
+                self._touch(project_idx)
                 return True
         return False
-
-    def toggle_settlement(self, project_idx: int, settlement_key: str, state: bool):
-        project = self.get_project(project_idx)
-        if project:
-            if state and settlement_key not in project.settled_debts:
-                project.settled_debts.append(settlement_key)
-            elif not state and settlement_key in project.settled_debts:
-                project.settled_debts.remove(settlement_key)
-            self.save()
 
 
 # ─── Balance Calculator ────────────────────────────────────────────────────────
