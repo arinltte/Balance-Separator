@@ -1,47 +1,40 @@
 # Balance Separator ⚖️💸
 
-Balance Separator is a fast, offline desktop application built with Python and PyQt6. It is designed to effortlessly calculate group expenses, figure out everyone's fair share, and generate precise pairwise settlements so you know exactly **who owes whom**. 
+Balance Separator is a fast, offline, cross-platform desktop application built with Python and PyQt6. It is designed to effortlessly calculate group expenses, figure out everyone's fair share, and generate precise pairwise settlements so you know exactly **who owes whom**. 
 
-Perfect for road trips, shared house expenses, or collaborative projects.
+Perfect for road trips, shared house expenses, or collaborative projects!
 
-![Balance Separator Screenshot](BS_img1.png)
+![Balance Separator Screenshot](assets/BS_img1.png)
 
 ## ✨ Features
 
-### 👥 Teammate & Profile Management
-* **Custom Avatars:** Upload profile pictures for teammates. Images are automatically compressed and circularly cropped to keep the app lightweight.
-* **Inline Editing:** Right-click to edit names, descriptions, or update/remove profile pictures.
-* **Persistent State:** All project data and teammates are automatically saved to a local JSON file (`projects.json`).
-
-### ⚡ Rapid Expense Entry
-* **Smart Input Navigation:** Typing numbers in the description field automatically jumps to the Amount field. Typing letters in an empty Amount field jumps to the Description.
-* **Enter-to-Save:** Press `Enter` in the amount field to instantly record the expense.
-* **Inline Editing:** Double-click any expense description in the table to quickly fix typos without deleting the entry.
-
 ### 🧮 Flawless Financial Logic
-* **Zero Precision Errors:** All background calculations are performed in integers (cents) to prevent floating-point rounding errors. 
-* **Pairwise Settlements:** The algorithm calculates exact proportional debts between specific individuals (e.g., "Person A owes Person B exactly RM12.36").
-* **Payment Tracking:** Tick the checkbox next to a settlement to mark it as paid. This state is saved automatically and crosses out the text visually without altering the math.
+* **Zero Precision Errors:** Background calculations are performed entirely in integers (cents) to prevent floating-point rounding errors. 
+* **Pairwise Settlements:** Automatically calculates exact proportional debts between specific individuals (e.g., "Person A owes Person B exactly RM12.36").
+* **Payment Tracking:** Tick the checkbox next to a settlement to mark it as paid. This state is persistent and saved automatically.
+* **Global Currencies:** Supports formatting for multiple international currencies (`$`, `€`, `£`, `¥`, `RM`, `C$`, `A$`, `CHF`, etc.).
 
-### 🎨 Modern UI/UX
-* **Light & Dark Mode:** Toggle seamlessly between themes via the settings menu. 
-* **Customizable Layout:** The interface features resizable splitters for the sidebar and content columns. Your layout preferences are saved automatically (`config.json`).
-* **Clean Interface:** Scrollbars are completely hidden for a sleek, modern look (mouse-wheel/trackpad scrolling remains fully functional).
+### 🎨 Modern & Customizable UI
+* **Dynamic Theme Engine:** Fully supports Light, Dark, and System modes (automatically syncing with your OS appearance).
+* **Custom Accent Colors:** Personalize the application by picking your own accent color for buttons and highlights.
+* **Fluid Layout:** The interface features resizable splitters. Your layout preferences are saved automatically.
+* **Smart Input Navigation:** Typing numbers in the description field jumps to the Amount field. Typing letters in an empty Amount field jumps to Description.
 
-### 📄 Exporting & Reporting
-* **PDF Export:** Generates a 2-page clean PDF report containing the balance summary, settlements, and a detailed list of all expenses.
-* **Excel Export:** Exports data cleanly into formatted Excel (`.xlsx`) sheets for further accounting.
+### 💾 Data Portability & Privacy
+* **100% Offline:** No cloud, no sign-ups. Your data stays on your machine.
+* **PDF & Excel Export:** Generate clean 2-page PDF reports or formatted Excel (`.xlsx`) sheets with a single click.
+* **JSON Backups:** Export individual projects as `.json` files to share with friends or backup, and import them right back into the app.
 
 ---
 
 ## 🚀 Installation & Setup
 
-This project does not have strict Python version limits (Tested on Python 3.14) but requires a modern Python 3.x environment.
+This application requires a modern Python 3.x environment (Tested on Python 3.10+).
 
 ### 1. Clone the repository
 ```bash
 git clone https://github.com/arinltte/Balance-Separator.git
-cd balance-separator
+cd Balance-Separator
 ```
 
 ### 2. Create a Virtual Environment (Recommended)
@@ -74,12 +67,16 @@ python balance_gui.py
 
 ---
 
-## 📂 File Structure
+## 📂 File Structure & Data Storage
 
-* **`balance_gui.py`**: Contains all UI rendering, stylesheets, event handling, and window logic.
-* **`balance_logic.py`**: The backend brain. Handles dataclasses, file saving/loading, and the core mathematical settlement algorithms.
-* **`projects.json`**: Auto-generated file where all your project data is stored.
-* **`config.json`**: Auto-generated file storing your layout sizes and theme preferences.
+The application code is split into two main files:
+* **`balance_gui.py`**: Contains all UI rendering, stylesheets, and window logic.
+* **`balance_logic.py`**: The backend logic. Handles data models, file I/O, and the core mathematical algorithms.
+
+**Where is my data saved?**
+To ensure cross-platform compatibility without requiring admin privileges, your data (`projects.json` and `config.json`) is safely stored in your user directory:
+* **macOS/Linux:** `~/.balance_separator/`
+* **Windows:** `C:\Users\YourName\Documents\BalanceSeparator\`
 
 ---
 
