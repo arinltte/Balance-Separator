@@ -22,8 +22,8 @@ Perfect for road trips, shared house expenses, or collaborative projects!
 
 ### 💾 Data Portability & Privacy
 * **100% Offline:** No cloud, no sign-ups. Your data stays on your machine.
-* **PDF & Excel Export:** Generate clean 2-page PDF reports or formatted Excel (`.xlsx`) sheets with a single click.
-* **JSON Backups:** Export individual projects as `.json` files to share with friends or backup, and import them right back into the app.
+* **PDF & Excel Export:** Generate clean PDF reports or formatted Excel (`.xlsx`) sheets with a single click.
+* **JSON Export:** Export individual projects as `.json` files to share with friends or backup, and import them right back into the app.
 
 ---
 
