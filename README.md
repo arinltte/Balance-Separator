@@ -1,35 +1,55 @@
 # Balance Separator ⚖️💸
 
-Balance Separator is a fast, offline, cross-platform desktop application built with Python and PyQt6. It is designed to effortlessly calculate group expenses, figure out everyone's fair share, and generate precise pairwise settlements so you know exactly **who owes whom**. 
+Balance Separator is a fast, offline-first, locally-networked desktop application designed for precise group expense calculation and debt settlement. Engineered in Python, it provides a robust mathematical engine to process shared expenses and a secure peer-to-peer networking layer for real-time collaboration on a Local Area Network (LAN). Effortlessly calculate group expenses, figure out everyone's fair share, and generate precise pairwise settlements so you know exactly **who owes whom**. 
 
 Perfect for road trips, shared house expenses, or collaborative projects!
 
 ![Balance Separator Screenshot](assets/BS_img1.png)
 
-## ✨ Features
+## 🏗️ Core Architecture & Technical Features
 
-### 🧮 Flawless Financial Logic
-* **Zero Precision Errors:** Background calculations are performed entirely in integers (cents) to prevent floating-point rounding errors. 
-* **Pairwise Settlements:** Automatically calculates exact proportional debts between specific individuals (e.g., "Person A owes Person B exactly RM12.36").
-* **Payment Tracking:** Tick the checkbox next to a settlement to mark it as paid. This state is persistent and saved automatically.
-* **Global Currencies:** Supports formatting for multiple international currencies (`$`, `€`, `£`, `¥`, `RM`, `C$`, `A$`, `CHF`, etc.).
+### 🌐 Peer-to-Peer Local Network Synchronization
+* **Zero-Configuration Discovery:** Utilizes UDP broadcasting for automatic host discovery within a local subnet.
+* **TCP Payload Delivery:** Real-time state synchronization is handled via dedicated TCP sockets. The architecture supports up to 50 concurrent client connections per host.
+* **Network Serialization:** Complex state objects, including binary file attachments, are dynamically serialized into JSON payloads (with Base64 encoding for binaries) and reconstructed seamlessly on client machines.
 
-### 🎨 Modern & Customizable UI
-* **Dynamic Theme Engine:** Fully supports Light, Dark, and System modes (automatically syncing with your OS appearance).
-* **Custom Accent Colors:** Personalize the application by picking your own accent color for buttons and highlights.
-* **Fluid Layout:** The interface features resizable splitters. Your layout preferences are saved automatically.
-* **Smart Input Navigation:** Typing numbers in the description field jumps to the Amount field. Typing letters in an empty Amount field jumps to Description.
+### 🔒 Security & Protection Mechanisms
+* **Cryptographic Payload Encryption:** Network payloads for password-protected projects are secured using symmetric encryption (`cryptography.fernet`).
+* **Robust Key Derivation:** Passwords are mathematically hashed and salted using `PBKDF2HMAC` (SHA256) with 50,000 iterations to thwart fast-hashing and brute-force attacks.
+* **Brute-Force & Flood Protection:** Host instances strictly track authentication attempts per IP address, enforcing a temporary lockout (30 seconds) after 10 failed attempts.
+* **Memory & Buffer Safety:** Hardcoded maximum network payload limits (50MB per packet) prevent buffer overflow and out-of-memory denial-of-service (DoS) scenarios.
+* **Path Traversal Blocking:** File I/O operations utilize strict sanitization (`safe_path_resolve`) to aggressively block directory traversal (`../`) vulnerabilities when saving incoming network attachments.
 
-### 💾 Data Portability & Privacy
-* **100% Offline:** No cloud, no sign-ups. Your data stays on your machine.
-* **PDF & Excel Export:** Generate clean PDF reports or formatted Excel (`.xlsx`) sheets with a single click.
-* **JSON Export:** Export individual projects as `.json` files to share with friends or backup, and import them right back into the app.
+### 🧮 Algorithmic Financial Logic
+* **Zero Precision Errors:** All financial background calculations are strictly processed in integers (cents) to entirely eliminate floating-point arithmetic rounding errors.
+* **Optimized Settlement Engine:** Employs a Greedy Algorithm to calculate the absolute minimum number of pairwise transfers required to settle all debts across `n` participants.
+* **Stateful Debt Tracking:** Supports complex, incremental settlement logic tracking. Differentiates between automatically calculated remaining balances and historically tracked "manual" or "completed" settlements.
+
+### 💾 Data Integrity & Export Pipelines
+* **Offline-First Storage:** Local user data relies on standard JSON for lossless serialization.
+* **Document Generation:** Includes native modules to parse project state arrays and compile them into formatted PDF reports or Excel (`.xlsx`) spreadsheets.
+
+---
+
+## 📂 Project Structure & Separation of Concerns
+
+The codebase enforces a strict separation of logic, networking, and presentation layers:
+* `logic_models.py` — Dataclass definitions defining the state schemas (Expenses, Teammates, Projects).
+* `logic_project.py` — File I/O, mathematical settlement engines, and local state management.
+* `logic_network.py` — The core TCP/UDP network engine, cryptography implementation, and socket handling.
+* `config.py` — Global environment constants, path resolution, and security sanitization functions.
+* `main.py` / `gui_*.py` — Application entry point, thread dispatching, and frontend view rendering.
+
+**Data Storage Directories:**
+To ensure cross-platform compatibility without requiring elevated privileges, all state and attachment files are stored within the standard user directory space:
+* **macOS/Linux:** `~/.balance_separator/`
+* **Windows:** `C:\Users\YourName\Documents\BalanceSeparator\`
 
 ---
 
 ## 🚀 Installation & Setup
 
-This application requires a modern Python 3.x environment (Tested on Python 3.10+).
+This application requires a modern Python 3.10+ environment.
 
 ### 1. Clone the repository
 ```bash
@@ -37,7 +57,7 @@ git clone https://github.com/arinltte/Balance-Separator.git
 cd Balance-Separator
 ```
 
-### 2. Create a Virtual Environment (Recommended)
+### 2. Create a Virtual Environment
 **For macOS/Linux:**
 ```bash
 python3 -m venv venv
@@ -52,41 +72,23 @@ python -m venv .venv
 ### 3. Install Dependencies
 Install the required libraries using `pip`:
 ```bash
-pip install PyQt6 pandas openpyxl
-```
-or
-```bash
 pip install -r requirements.txt
 ```
-*Note: `PyQt6` is used for the Graphical User Interface. `pandas` and `openpyxl` are required for exporting data to Excel.*
 
 ### 4. Run the Application
 ```bash
-python balance_gui.py
+python main.py
 ```
-
----
-
-## 📂 File Structure & Data Storage
-
-The application code is split into two main files:
-* **`balance_gui.py`**: Contains all UI rendering, stylesheets, and window logic.
-* **`balance_logic.py`**: The backend logic. Handles data models, file I/O, and the core mathematical algorithms.
-
-**Where is my data saved?**
-To ensure cross-platform compatibility without requiring admin privileges, your data (`projects.json` and `config.json`) is safely stored in your user directory:
-* **macOS/Linux:** `~/.balance_separator/`
-* **Windows:** `C:\Users\YourName\Documents\BalanceSeparator\`
 
 ---
 
 ## 🤝 Contributing
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](../../issues). 
+Contributions, architecture improvements, and security audits are highly encouraged!
 
 1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
+2. Create your Feature Branch (`git checkout -b feature/OptimizationLogic`)
+3. Commit your Changes (`git commit -m 'Implement optimization logic'`)
+4. Push to the Branch (`git push origin feature/OptimizationLogic`)
 5. Open a Pull Request
 
 ---
@@ -95,5 +97,7 @@ Contributions, issues, and feature requests are welcome! Feel free to check the 
 Distributed under the MIT License. See `LICENSE` for more information.
 
 <p align="center">
-  <i>2026 Developed by Chen Jin Shen, cjshen00@gmail.com</i>
+  <i>Developed by arinltte, cjshen00@gmail.com</i>
 </p>
+```
+
