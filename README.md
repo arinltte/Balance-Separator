@@ -99,5 +99,3 @@ Distributed under the MIT License. See `LICENSE` for more information.
 <p align="center">
   <i>Developed by arinltte, cjshen00@gmail.com</i>
 </p>
-```
-
