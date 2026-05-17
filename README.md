@@ -1,3 +1,5 @@
+![Balance Separator Cover](assets/BS_img2.jpg)
+
 # Balance Separator ⚖️💸
 
 Balance Separator is a fast, offline-first, locally-networked desktop application designed for precise group expense calculation and debt settlement. Engineered in Python, it provides a robust mathematical engine to process shared expenses and a secure peer-to-peer networking layer for real-time collaboration on a Local Area Network (LAN). Effortlessly calculate group expenses, figure out everyone's fair share, and generate precise pairwise settlements so you know exactly **who owes whom**. 
